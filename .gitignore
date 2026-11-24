@@ -1,0 +1,23 @@
+node_modules/
+.tooling/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+artifacts/*.apk
+artifacts/*.zip
+*.log
+
+# ==== iOS 云构建仓库：只提交构建所需的最小文件集（其余顶层内容全部忽略） ====
+/*
+!/.gitignore
+!/README.md
+!/capacitor.config.json
+!/package.json
+!/package-lock.json
+!/.github/
+!/.github/**
+!/flashcard-hub/
+!/flashcard-hub/**
+!/ios/
+!/ios/**

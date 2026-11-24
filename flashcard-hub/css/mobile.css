@@ -1,0 +1,56 @@
+/* 原生 APP / 触屏增量样式：保持纸本图录视觉，只补安全区、触控与离线状态。 */
+html{scroll-padding-top:calc(14px + env(safe-area-inset-top,0px));}
+body{padding-bottom:env(safe-area-inset-bottom,0px);}
+button,a,input,select{touch-action:manipulation;}
+button,a{-webkit-tap-highlight-color:rgba(150,112,47,.16);}
+
+.native-app .nav{
+  height:calc(78px + env(safe-area-inset-top,0px));
+  padding-top:env(safe-area-inset-top,0px);
+}
+.native-app .detail-top{padding-top:env(safe-area-inset-top,0px);}
+/* 卡片展台在原生环境按动态视口铺满，给 iframe 内整卡足够高度；保留下方标本标签可滚动 */
+.native-app .stage-box{height:min(82dvh,760px);min-height:380px;}
+.native-app .viewer-bar{padding-top:env(safe-area-inset-top,0px);}
+.native-app .draw-veil{padding-bottom:env(safe-area-inset-bottom,0px);}
+
+.network-status{
+  position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  z-index:240;display:none;align-items:center;gap:9px;
+  min-height:48px;padding:9px 10px 9px 13px;
+  color:var(--ink);background:var(--paper-hi);border:1px solid var(--brass);
+  box-shadow:0 12px 36px -24px rgba(25,23,18,.8);font-size:12px;line-height:1.45;
+}
+.network-status.show{display:flex;}
+.network-dot{width:7px;height:7px;flex:0 0 auto;background:var(--brass);transform:rotate(45deg);}
+.network-text{flex:1;min-width:0;}
+.network-status button{
+  flex:0 0 auto;min-height:34px;padding:0 9px;border:1px solid var(--line);
+  color:var(--ink);background:transparent;font-size:11px;white-space:nowrap;
+}
+.has-network-banner .toast-wrap{bottom:calc(78px + env(safe-area-inset-bottom,0px));}
+
+.offline-mode #btn-upload,.offline-mode #empty-upload,
+.offline-mode #btn-rename,.offline-mode #btn-cover,.offline-mode #btn-delete,
+.offline-mode .plate-edit,.offline-mode .plate-cover{display:none!important;}
+
+@media (hover:none),(pointer:coarse){
+  .btn,.avatar,.modal-close,.tool-link,.im-arrow,.im-shuffle,
+  .ring-nav,.vs-btn,.otp-btn,.login-tabs button{min-height:44px;}
+  .avatar{min-width:44px;}
+  .modal-close{min-width:44px;}
+  .plate-edit,.plate-cover{min-width:40px;min-height:40px;}
+  .nav-links a,.back-link{display:inline-flex;align-items:center;min-height:44px;}
+  .avatar-menu button{min-height:44px;padding-top:11px;padding-bottom:11px;}
+  input,select{font-size:16px;}
+  .search-box input,.m-search input{font-size:16px;}
+}
+
+@media (max-width:640px){
+  .network-status{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));}
+  .native-app .nav{height:calc(62px + env(safe-area-inset-top,0px));}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .network-status{transition:none;}
+}

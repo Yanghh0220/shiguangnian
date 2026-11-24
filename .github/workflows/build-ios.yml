@@ -1,0 +1,58 @@
+name: build-ios
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync web assets to iOS shell
+        run: npx cap sync ios
+
+      - name: Toolchain info
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Build unsigned .app
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -target App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir Payload
+          cp -R "build/Build/Products/Release-iphoneos/App.app" Payload/
+          zip -qry ShiGuangNian-iOS-unsigned.ipa Payload
+          ls -lh ShiGuangNian-iOS-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShiGuangNian-iOS-unsigned-${{ github.sha }}
+          path: ShiGuangNian-iOS-unsigned.ipa
+          retention-days: 14

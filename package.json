@@ -1,0 +1,28 @@
+{
+  "name": "flashcard-hub-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "拾光年 · 闪卡收藏 Capacitor 移动端壳",
+  "scripts": {
+    "assets": "capacitor-assets generate --android",
+    "verify:web": "node scripts/verify_web.cjs",
+    "sync": "cap sync android",
+    "build:android": "npm run sync && cd android && gradlew assembleDebug",
+    "build:release": "npm run sync && cd android && gradlew assembleRelease",
+    "open:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.0.0",
+    "@capacitor/browser": "8.0.0",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/splash-screen": "8.0.0",
+    "@capacitor/status-bar": "8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "4.0.0",
+    "@capacitor/cli": "8.6.2",
+    "@playwright/test": "^1.65.1"
+  }
+}

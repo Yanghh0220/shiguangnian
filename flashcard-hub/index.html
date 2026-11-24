@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F1EDE4">
+<!-- 原生壳启动清理（必须内联且最早执行：外链脚本本身会被旧 SW 缓存挡住）。
+     APK 覆盖安装不会清除 WebView 的 Service Worker，旧 SW 会用陈旧 home.js
+     覆盖新版本，导致上传修复「装了却不生效」。资源全在包内，原生环境无需 SW。 -->
+<script>
+(function () {
+  try {
+    var cap = window.Capacitor;
+    var native = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+    if (!native) return;
+    var FLAG = 'fc_sw_purged_20261117i';
+    try { if (sessionStorage.getItem(FLAG) === '1') return; sessionStorage.setItem(FLAG, '1'); } catch (e) { return; }
+    var jobs = [];
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister().catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k).catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    Promise.all(jobs).then(function () { location.reload(); });
+  } catch (e) { /* 清理失败不影响页面正常加载 */ }
+})();
+</script>
+<title>拾光年 · 闪卡收藏</title>
+<meta name="description" content="拾光年 · 全息闪卡收藏馆：上传、浏览、随时随地观看你的闪卡收藏。">
+<link rel="stylesheet" href="css/styles.css?v=20261118a">
+<link rel="stylesheet" href="css/mobile.css?v=20261116a">
+<!-- 提前与 OAuth 中转域名建连，登录/验证码接口更快握手 -->
+<link rel="preconnect" href="https://www.workbuddy.cn">
+<link rel="dns-prefetch" href="https://www.workbuddy.cn">
+</head>
+<body>
+
+<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+<!-- 顶部导航 -->
+<header class="nav">
+  <a class="brand" href="index.html" aria-label="拾光年">
+    <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <path d="M16 2.6 29.4 16 16 29.4 2.6 16Z" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M16 9.6 22.4 16 16 22.4 9.6 16Z" fill="currentColor" opacity=".92"/>
+      <path d="M16 2.6v6.2M16 23.2v6.2" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+    <span class="brand-txt">
+      <b class="brand-name">拾光年</b>
+      <i class="brand-sub">Holo Archive</i>
+    </span>
+  </a>
+  <nav class="nav-links" aria-label="主导航">
+    <a href="index.html" class="active">我的收藏</a>
+    <a href="play.html">抽卡玩法</a>
+  </nav>
+  <div class="nav-right">
+    <div class="search-box" id="nav-search-slot" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.6" stroke="currentColor" stroke-width="1.5"/><path d="M16 16.4 20 20.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input id="search-input" type="search" placeholder="检索卡片名称" aria-label="搜索闪卡">
+    </div>
+    <span id="nav-user"></span>
+  </div>
+</header>
+
+<!-- 启动态：恢复本机登录状态期间显示，避免空白或误以为要重新登录 -->
+<div class="boot-view show" id="boot-view" aria-live="polite">
+  <span class="boot-ring" aria-hidden="true"></span>
+  <span class="boot-txt">正在恢复登录状态…</span>
+</div>
+
+<!-- ============ 登录视图（未登录时显示） ============ -->
+<section class="login-wrap" id="login-view" aria-label="登录">
+  <aside class="login-aside">
+    <svg class="aside-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M16 2.6 29.4 16 16 29.4 2.6 16Z" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M16 9.6 22.4 16 16 22.4 9.6 16Z" fill="currentColor" opacity=".92"/>
+      <path d="M16 2.6v6.2M16 23.2v6.2" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+    <div class="aside-mid">
+      <div class="aside-vertical">把光收进册子里</div>
+      <span class="aside-seal">拾光年</span>
+    </div>
+    <p class="aside-foot">Holo Archive · Since 2026</p>
+  </aside>
+
+  <div class="login-panel">
+    <div class="login-card">
+      <h1>登入收藏馆</h1>
+      <p class="sub">验证手机号或邮箱即可进入，新用户自动建册。本设备只需登录一次，之后打开自动进入。</p>
+
+      <div class="login-tabs" role="tablist">
+        <button id="tab-phone" class="active" role="tab" aria-selected="true">手机号</button>
+        <button id="tab-email" role="tab" aria-selected="false">邮箱</button>
+      </div>
+
+      <div class="field" id="row-phone">
+        <label for="login-phone">手机号</label>
+        <div class="row">
+          <input id="login-phone" type="tel" maxlength="11" inputmode="numeric" placeholder="11 位手机号" autocomplete="tel">
+        </div>
+        <span class="hint" id="phone-hint"></span>
+      </div>
+
+      <div class="field" id="row-email" style="display:none">
+        <label for="login-email">邮箱地址</label>
+        <div class="row">
+          <input id="login-email" type="email" placeholder="name@example.com" autocomplete="email">
+        </div>
+        <span class="hint" id="email-hint"></span>
+      </div>
+
+      <div class="field">
+        <label for="login-code">验证码</label>
+        <div class="row">
+          <input id="login-code" class="code" type="text" maxlength="8" inputmode="numeric" placeholder="6 位数字" autocomplete="one-time-code">
+          <button type="button" class="otp-btn" id="otp-btn">获取验证码</button>
+        </div>
+        <span class="hint" id="code-hint"></span>
+      </div>
+
+      <button class="btn btn-primary" id="login-submit">进 入 收 藏 馆</button>
+      <div class="login-err" id="login-err" role="alert"></div>
+
+      <div class="divider"><span>或</span></div>
+      <button class="btn-wechat" id="wechat-btn">微信登录</button>
+      <p class="wx-hint" id="wx-hint" hidden></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 绑定引导视图（用已绑定的副身份登录时显示） ============ -->
+<section class="bound-wrap" id="bound-view" aria-label="账号已绑定">
+  <div class="bound-card">
+    <span class="bound-badge">已绑定</span>
+    <h1 id="bound-title">此登录方式已绑定到主账号</h1>
+    <p class="bound-desc" id="bound-desc">为了不把收藏分成两份，请改用绑定时选定的主账号登录。</p>
+    <button class="btn btn-primary" id="bound-primary">用主账号登录</button>
+    <div class="bound-extra" id="bound-extra"></div>
+  </div>
+</section>
+
+<!-- ============ 应用视图（登录后显示） ============ -->
+<main id="app-view" style="display:none">
+
+  <!-- 合并待办横幅：本机暂存有另一账号的卡片时出现 -->
+  <div id="merge-banner"></div>
+
+  <!-- 案头工具杆：滚动后吸顶，筛选 / 排序 / 检索 / 换视图始终在手边 -->
+  <div class="desk-sentinel" aria-hidden="true"></div>
+  <div class="desk" id="desk">
+    <!-- 移动端检索条：桌面端由顶栏搜索框承担，这里不显示 -->
+    <div class="m-search" id="m-search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.6" stroke="currentColor" stroke-width="1.5"/><path d="M16 16.4 20 20.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input id="m-search-input" type="search" placeholder="检索卡片名称" aria-label="搜索闪卡" enterkeyhint="search" autocomplete="off">
+    </div>
+
+    <!-- 筛选：分类维度已取消，每张卡的纪念意义都独一无二 -->
+    <div class="toolbar">
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label class="ctrl" for="f-time">
+          <span class="label">时间</span>
+          <select id="f-time">
+            <option value="all">全部</option>
+            <option value="7">近 7 天</option>
+            <option value="30">近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+        </label>
+        <label class="ctrl" for="f-source">
+          <span class="label">方式</span>
+          <select id="f-source">
+            <option value="all">全部</option>
+            <option value="抽卡获得">抽卡获得</option>
+            <option value="任务奖励">任务奖励</option>
+            <option value="商店兑换">商店兑换</option>
+            <option value="活动掉落">活动掉落</option>
+            <option value="上传导入">上传导入</option>
+          </select>
+        </label>
+      </div>
+      <label class="ctrl sort" for="f-sort">
+        <span class="label">排序</span>
+        <select id="f-sort">
+          <option value="newest">最新收藏</option>
+          <option value="oldest">最早收藏</option>
+          <option value="name">名称</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- 首页显示形式：图录（全部按顺序平铺） / 沉浸（一次一张，随序上下滑动） -->
+    <div class="view-switch" id="view-switch" role="group" aria-label="首页显示形式">
+      <span class="vs-label">显示形式</span>
+      <div class="vs-seg">
+        <button class="vs-btn active" type="button" data-mode="grid" aria-pressed="true" title="全部卡片按顺序排列展示">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.6" y="1.6" width="5.2" height="5.2" stroke="currentColor" stroke-width="1.1"/><rect x="9.2" y="1.6" width="5.2" height="5.2" stroke="currentColor" stroke-width="1.1"/><rect x="1.6" y="9.2" width="5.2" height="5.2" stroke="currentColor" stroke-width="1.1"/><rect x="9.2" y="9.2" width="5.2" height="5.2" stroke="currentColor" stroke-width="1.1"/></svg>
+          <span>图录</span>
+        </button>
+        <button class="vs-btn" type="button" data-mode="immersive" aria-pressed="false" title="一次一张，随机顺序上下滑动切换">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3.6" y="2.4" width="8.8" height="11.2" stroke="currentColor" stroke-width="1.1"/><path d="M8 5.4v5.2M6.3 7.1 8 5.4l1.7 1.7M6.3 8.9 8 10.6l1.7-1.7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>沉浸</span>
+        </button>
+      </div>
+    </div>
+
+    <button class="btn btn-primary desk-upload" id="btn-upload" type="button">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v11M12 5 7.5 9.5M12 5l4.5 4.5M5 19h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      导入卡片
+    </button>
+  </div>
+  </div><!-- /desk -->
+
+  <!-- 卡片网格：图录模式（现有形式） -->
+  <div class="grid" id="grid" aria-live="polite"></div>
+
+  <!-- ============ 沉浸浏览：抖音式单卡上下滑动 ============ -->
+  <section class="im-view" id="im-view" aria-label="沉浸浏览">
+    <div class="im-stage" id="im-stage">
+      <!-- 轨道上最多同时存在上一张 / 当前张 / 下一张，滑动时整条轨道做 2D 位移 -->
+      <div class="im-track" id="im-track"></div>
+
+      <!-- 空态 / 错误态：沿用图录模式的文案 -->
+      <div class="im-state" id="im-state">
+        <div class="im-state-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5.5" width="17" height="13" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 15.6 9 10.2l4 4 2.6-2.6 4.9 4.8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        </div>
+        <h2 id="im-state-title">正在清点…</h2>
+        <p id="im-state-desc">正在整理这一册的闪卡。</p>
+        <button class="btn btn-ghost" id="im-state-btn" type="button">重试</button>
+      </div>
+    </div>
+
+    <div class="im-foot">
+      <span class="im-hint" id="im-hint">上滑 / 下滑 切换闪卡 · 顺序随机，不重复</span>
+      <div class="im-controls">
+        <button class="im-arrow" id="im-prev" type="button" aria-label="上一张闪卡" title="上一张">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.8V3.2M4.6 6.6 8 3.2l3.4 3.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="im-count" aria-live="polite"><b id="im-index">01</b><i></i><span id="im-total">01</span></div>
+        <button class="im-arrow" id="im-next" type="button" aria-label="下一张闪卡" title="下一张">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3.2v9.6M4.6 9.4 8 12.8l3.4-3.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <button class="im-shuffle" id="im-shuffle" type="button">重新洗牌</button>
+    </div>
+  </section>
+
+  <!-- 空态 -->
+  <div class="state-box" id="state-empty">
+    <div class="icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M3.5 15.6 9 10.2l4 4 2.6-2.6 4.9 4.8" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+    </div>
+    <h2 id="empty-title">册子还是空的</h2>
+    <p id="empty-desc">把生成好的全息闪卡 HTML 文件放进来，它就会被登记成一张卡片。</p>
+    <button class="btn btn-ghost" id="empty-upload">导入第一张闪卡</button>
+  </div>
+
+  <!-- 错误态 -->
+  <div class="state-box" id="state-error">
+    <div class="icon" style="border-color:rgba(140,58,43,.3);color:var(--seal)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7.5v5.5M12 16v.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="8.4" stroke="currentColor" stroke-width="1.3"/></svg>
+    </div>
+    <h2>没能取到目录</h2>
+    <p id="error-desc"></p>
+    <button class="btn btn-ghost" id="error-retry">重试</button>
+  </div>
+
+  <!-- 加载更多 -->
+  <div class="load-more" id="load-more" style="display:none">
+    <button class="btn btn-ghost" id="load-more-btn">继续翻阅</button>
+  </div>
+</main>
+
+<!-- ============ 重命名弹窗 ============ -->
+<div class="modal-overlay" id="rename-overlay" role="dialog" aria-modal="true" aria-label="重命名闪卡">
+  <div class="modal" style="max-width:430px">
+    <div class="modal-head">
+      <div>
+        <h3>重命名</h3>
+        <p class="modal-sub" style="margin:6px 0 0">只改登记名称，卡片文件保持原样。</p>
+      </div>
+      <button class="modal-close" id="rename-close" aria-label="关闭">×</button>
+    </div>
+    <div class="field" style="margin-top:22px">
+      <label for="rename-input">卡片名称</label>
+      <div class="row">
+        <input id="rename-input" type="text" maxlength="60" placeholder="输入新的名称" aria-label="新的卡片名称">
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="rename-cancel">取消</button>
+      <button class="btn btn-primary" id="rename-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 上传弹窗 ============ -->
+<div class="modal-overlay" id="upload-overlay" role="dialog" aria-modal="true" aria-label="导入卡片">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>登记新卡</h3>
+        <p class="modal-sub" style="margin:6px 0 0">选择全息闪卡 HTML 文件，名称与封面会自动识别；也可逐张指定封面，登记后各设备同步可见。</p>
+      </div>
+      <button class="modal-close" id="upload-close" aria-label="关闭">×</button>
+    </div>
+
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="选择文件">
+      <strong><span class="on-desk">点击选择，或把文件拖到这里</span><span class="on-touch">点击选择文件</span></strong>
+      <span class="tiny">可批量 · 仅 .html · 单张不超过 50MB</span>
+    </div>
+    <input type="file" id="file-input" accept=".html,.htm,text/html" multiple style="display:none">
+
+    <div class="form-row">
+      <div class="field">
+        <label for="upload-source">来源 · 本批通用</label>
+        <select id="upload-source">
+          <option value="上传导入">上传导入</option>
+          <option value="抽卡获得">抽卡获得</option>
+          <option value="任务奖励">任务奖励</option>
+          <option value="商店兑换">商店兑换</option>
+          <option value="活动掉落">活动掉落</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="file-list" id="file-list"></div>
+    <div class="progress" id="progress"><i></i></div>
+
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="upload-cancel">取消</button>
+      <button class="btn btn-primary" id="upload-start">开始登记</button>
+    </div>
+  </div>
+</div>
+
+<!-- 云服务 SDK：本地同源加载（jsdelivr CDN 在部分移动网络不可达），失败时由 sdk-fallback 异步兜底；defer 按序执行不阻塞解析 -->
+<script defer src="js/vendor/workbuddy-cloud-sdk.global.js?v=20261104a"></script>
+<script defer src="js/native-http.js?v=20261117i"></script>
+<script defer src="js/sdk-fallback.js?v=20261104a"></script>
+<script defer src="js/cloud.js?v=20261118b"></script>
+<script defer src="js/offline.js?v=20261118b"></script>
+<script defer src="js/mobile.js?v=20261117i"></script>
+<script defer src="js/cover.js?v=20261118b"></script>
+<script defer src="js/auth.js?v=20261117i"></script>
+<script defer src="js/merge.js?v=20261103a"></script>
+<script defer src="js/immersive.js?v=20261110b"></script>
+<script defer src="js/home.js?v=20261118b"></script>
+<script defer src="js/platefx.js?v=20261108a"></script>
+<script defer src="js/sw-register.js?v=20261116d"></script>
+</body>
+</html>

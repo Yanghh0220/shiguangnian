@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F1EDE4">
+<script>
+(function () {
+  try {
+    var cap = window.Capacitor;
+    var native = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+    if (!native) return;
+    var FLAG = 'fc_sw_purged_20261117i';
+    try { if (sessionStorage.getItem(FLAG) === '1') return; sessionStorage.setItem(FLAG, '1'); } catch (e) { return; }
+    var jobs = [];
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister().catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k).catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    Promise.all(jobs).then(function () { location.reload(); });
+  } catch (e) {}
+})();
+</script>
+<title>闪卡详情 · 拾光年</title>
+<link rel="stylesheet" href="css/styles.css?v=20261118c">
+<link rel="stylesheet" href="css/mobile.css?v=20261118c">
+<!-- 提前与 OAuth 中转域名建连，登录/验证码接口更快握手 -->
+<link rel="preconnect" href="https://www.workbuddy.cn">
+<link rel="dns-prefetch" href="https://www.workbuddy.cn">
+</head>
+<body>
+
+<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+<div class="detail-wrap">
+
+  <!-- 顶栏 -->
+  <div class="detail-top">
+    <a class="back-link" href="index.html">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      返回目录
+    </a>
+    <div class="detail-actions">
+      <a class="btn btn-ghost" href="play.html">去抽卡</a>
+      <button class="btn btn-ghost" id="btn-cover">换封面</button>
+      <button class="btn btn-ghost" id="btn-rename">重命名</button>
+      <button class="btn btn-danger btn-del-sm" id="btn-delete">删除</button>
+    </div>
+  </div>
+
+  <!-- 主区：左展台（卡片领先），右标本标签 -->
+  <div class="detail-main">
+    <div class="detail-stage">
+      <!-- 展台：iframe 懒加载整卡 HTML -->
+      <div class="stage-box">
+        <iframe id="stage-frame" title="全息闪卡预览" sandbox="allow-scripts"
+                allow="accelerometer; gyroscope" aria-label="全息闪卡预览区域"></iframe>
+        <div class="stage-loading" id="stage-loading">
+          <div class="spin" aria-hidden="true"></div>
+          <span class="hint">正在展开卡片</span>
+        </div>
+      </div>
+      <!-- 白屏自救工具条：不同浏览器对 iframe 加载方式支持不一，可手动切换 -->
+      <div class="stage-tools">
+        <span id="stage-mode-label">标准模式</span>
+        <span class="tools-sep">/</span>
+        <button class="tool-link" id="btn-mode">显示异常？换个加载方式</button>
+        <span class="tools-sep">/</span>
+        <button class="tool-link" id="btn-newwin">新窗口打开</button>
+      </div>
+    </div>
+
+    <!-- 标本标签：编号 / 题名 / 印章 / 账目式元信息 -->
+    <aside class="detail-label">
+      <span class="dl-no" id="dl-no">NO.····</span>
+      <i class="dl-rule" aria-hidden="true"></i>
+      <h1 id="d-title">正在读取…</h1>
+      <span class="dl-seal" aria-hidden="true">拾光年</span>
+      <div class="detail-meta" id="d-meta"></div>
+      <p class="dl-note">卡片大文件只在本页加载；列表页仅读取封面缩略图，不触碰原文件。</p>
+    </aside>
+  </div>
+</div>
+
+<!-- 重命名 -->
+<div class="modal-overlay" id="rename-overlay" role="dialog" aria-modal="true" aria-label="重命名闪卡">
+  <div class="modal" style="max-width:430px">
+    <div class="modal-head">
+      <div>
+        <h3>重命名</h3>
+        <p class="modal-sub" style="margin:6px 0 0">只改登记名称，卡片文件保持原样。</p>
+      </div>
+      <button class="modal-close" id="rename-close" aria-label="关闭">×</button>
+    </div>
+    <div class="field" style="margin-top:22px">
+      <label for="rename-input">卡片名称</label>
+      <div class="row">
+        <input id="rename-input" type="text" maxlength="60" placeholder="输入新的名称" aria-label="新的卡片名称">
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="rename-cancel">取消</button>
+      <button class="btn btn-primary" id="rename-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认 -->
+<div class="modal-overlay" id="confirm-box" style="display:none" role="alertdialog" aria-modal="true" aria-label="删除确认">
+  <div class="modal" style="max-width:400px">
+    <h3>确认移除这张卡片？</h3>
+    <p class="modal-sub" style="margin:10px 0 0">
+      <span id="confirm-name"></span>会从册子中消失，原文件一并删除，无法恢复。
+    </p>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="confirm-cancel">再想想</button>
+      <button class="btn btn-danger" id="confirm-ok">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 云服务 SDK：本地同源加载（jsdelivr CDN 在部分移动网络不可达），失败时由 sdk-fallback 异步兜底；defer 按序执行不阻塞解析 -->
+<script defer src="js/vendor/workbuddy-cloud-sdk.global.js?v=20261104a"></script>
+<script defer src="js/native-http.js?v=20261117i"></script>
+<script defer src="js/sdk-fallback.js?v=20261104a"></script>
+<script defer src="js/cloud.js?v=20261118b"></script>
+<script defer src="js/offline.js?v=20261118b"></script>
+<script defer src="js/mobile.js?v=20261117i"></script>
+<script defer src="js/cover.js?v=20261118b"></script>
+<script defer src="js/detail.js?v=20261118c"></script>
+<script defer src="js/sw-register.js?v=20261116d"></script>
+</body>
+</html>

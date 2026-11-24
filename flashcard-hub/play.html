@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#F1EDE4">
+<script>
+(function () {
+  try {
+    var cap = window.Capacitor;
+    var native = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+    if (!native) return;
+    var FLAG = 'fc_sw_purged_20261117i';
+    try { if (sessionStorage.getItem(FLAG) === '1') return; sessionStorage.setItem(FLAG, '1'); } catch (e) { return; }
+    var jobs = [];
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      jobs.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister().catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    if (window.caches && caches.keys) {
+      jobs.push(caches.keys().then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k).catch(function () {}); }));
+      }).catch(function () {}));
+    }
+    Promise.all(jobs).then(function () { location.reload(); });
+  } catch (e) {}
+})();
+</script>
+<title>抽卡 · 拾光年</title>
+<meta name="description" content="拾光年 · 抽卡台：从已解锁的闪卡中随机请出一张，抽到即自动打卡。">
+<link rel="stylesheet" href="css/styles.css?v=20261110b">
+<link rel="stylesheet" href="css/mobile.css?v=20261116a">
+<!-- 提前与 OAuth 中转域名建连，登录/验证码接口更快握手 -->
+<link rel="preconnect" href="https://www.workbuddy.cn">
+<link rel="dns-prefetch" href="https://www.workbuddy.cn">
+</head>
+<body>
+
+<div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+<!-- 顶部导航 -->
+<header class="nav">
+  <a class="brand" href="index.html" aria-label="拾光年">
+    <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <path d="M16 2.6 29.4 16 16 29.4 2.6 16Z" stroke="currentColor" stroke-width="1.1"/>
+      <path d="M16 9.6 22.4 16 16 22.4 9.6 16Z" fill="currentColor" opacity=".92"/>
+      <path d="M16 2.6v6.2M16 23.2v6.2" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+    <span class="brand-txt">
+      <b class="brand-name">拾光年</b>
+      <i class="brand-sub">Holo Archive</i>
+    </span>
+  </a>
+  <nav class="nav-links" aria-label="主导航">
+    <a href="index.html">我的收藏</a>
+    <a href="play.html" class="active">抽卡玩法</a>
+  </nav>
+  <div class="nav-right">
+    <span id="nav-user"></span>
+  </div>
+</header>
+
+<!-- 启动态 -->
+<div class="boot-view show" id="boot-view" aria-live="polite">
+  <span class="boot-ring" aria-hidden="true"></span>
+  <span class="boot-txt">正在恢复登录状态…</span>
+</div>
+
+<main id="play-view" style="display:none">
+
+  <!-- 页头 -->
+  <div class="header play-head">
+    <div class="title-block">
+      <p class="eyebrow">Ritual</p>
+      <h1 class="page-title">抽卡 · 今日一签</h1>
+      <p class="page-sub" id="pool-sub">正在清点卡池…</p>
+    </div>
+    <div class="header-btns">
+      <a class="btn btn-ghost" href="index.html">回到收藏</a>
+    </div>
+  </div>
+
+  <div class="play-main">
+
+    <!-- ============ 抽卡台 ============ -->
+    <section class="panel draw-panel" aria-label="抽卡台">
+      <!-- 卡池：稀有度分组已移除，全部闪卡同池，每张都独一无二 -->
+      <div class="pool-tabs" id="pool-tabs" aria-label="卡池信息">
+        <span class="pool-count" id="pool-count">—</span>
+      </div>
+
+      <div class="stage" id="stage">
+        <!-- 卡环：牌背沿圆环排布，左右旋转浏览，点正前方的卡翻面抽卡 -->
+        <div class="ring-wrap" id="ring-wrap">
+          <button class="ring-nav ring-prev" id="ring-prev" type="button" aria-label="向左旋转卡环">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M9.8 3.2 5 8l4.8 4.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="ring-viewport" id="ring-viewport">
+            <div class="ring" id="ring" style="display:none"><!-- 卡牌由 play.js 注入 --></div>
+          </div>
+          <button class="ring-nav ring-next" id="ring-next" type="button" aria-label="向右旋转卡环">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M6.2 3.2 11 8l-4.8 4.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <p class="ring-hint" id="ring-hint">卡环自动旋转 · 点击「抽一张」全屏洗牌，停在正中的即是本次抽卡</p>
+
+        <!-- 空态 / 错误态 -->
+        <div class="stage-state" id="stage-state" hidden></div>
+      </div>
+
+      <div class="draw-actions">
+        <button class="btn btn-primary btn-draw" id="btn-draw" type="button">抽 一 张</button>
+        <button class="btn btn-ghost" id="btn-open" type="button" style="display:none">展开卡片</button>
+        <a class="tool-link draw-detail" id="link-detail" href="index.html" style="display:none">查看详情</a>
+      </div>
+      <p class="draw-hint" id="draw-hint">抽到即自动记入今日打卡，无需再确认。</p>
+    </section>
+
+    <!-- ============ 打卡簿 ============ -->
+    <aside class="panel checkin" id="checkin" aria-label="打卡簿">
+      <div class="ck-head">
+        <div>
+          <p class="ck-eyebrow">Check-in</p>
+          <h2 class="ck-title">打卡簿</h2>
+        </div>
+        <div class="ck-streak">
+          <b id="ck-streak-n">0</b>
+          <span>连续天数</span>
+        </div>
+      </div>
+
+      <div class="ck-today" id="ck-today">
+        <span class="ck-dot" aria-hidden="true"></span>
+        <p>今日尚未打卡。</p>
+      </div>
+
+      <div class="ck-week" id="ck-week" aria-label="最近七天打卡"></div>
+
+      <div class="ck-stats">
+        <div><b id="ck-total">0</b><span>累计抽卡</span></div>
+        <div><b id="ck-pool">0</b><span>在册闪卡</span></div>
+        <div><b id="ck-days">0</b><span>打卡天数</span></div>
+      </div>
+
+      <ol class="ck-list" id="ck-list"></ol>
+
+      <div class="ck-rules">
+        <h4>玩法</h4>
+        <ol>
+          <li>从已解锁的闪卡里随机请出一张，不挑不选。</li>
+          <li>抽到即自动打卡；同一天多抽只累加次数，打卡仍记一次。</li>
+          <li>连续天数按自然日计算，断一天就从 1 重新开始。</li>
+        </ol>
+      </div>
+
+      <p class="ck-note">打卡记录保存在本机浏览器，换设备不会同步。</p>
+    </aside>
+
+  </div>
+</main>
+
+<!-- ============ 全屏抽卡仪式（洗牌 → 停在正中 → 揭卡） ============ -->
+<div class="draw-veil" id="draw-veil" role="dialog" aria-modal="true" aria-label="抽卡仪式">
+  <div class="dv-eyebrow" aria-hidden="true">Ritual</div>
+  <h2 class="dv-title" id="dv-title">命运洗牌中</h2>
+  <div class="dv-viewport" id="dv-viewport">
+    <div class="ring dv-ring" id="dv-ring" style="display:none"><!-- 卡牌由 play.js 注入 --></div>
+  </div>
+  <p class="dv-hint" id="dv-hint">卡环正在加速旋转，慢慢停在命运的那一张…</p>
+
+  <!-- 抽卡结果铭牌（与主台同款版式） -->
+  <div class="drawn dv-drawn" id="dv-drawn" hidden>
+    <div class="drawn-no">
+      <span id="dv-no">NO.0000</span>
+      <span id="dv-src">上传导入</span>
+    </div>
+    <h2 class="drawn-name" id="dv-name">—</h2>
+    <div class="drawn-mat">
+      <span id="dv-mat">独一无二 · Unique</span>
+      <svg class="plate-sigil" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M8 1.6 14.4 8 8 14.4 1.6 8Z" stroke="currentColor" stroke-width="1"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="dv-actions" id="dv-actions" hidden>
+    <button class="btn btn-primary" id="dv-open" type="button">展开卡片</button>
+    <a class="btn btn-ghost" id="dv-detail" href="detail.html">查看详情</a>
+    <button class="btn btn-ghost" id="dv-close" type="button">收 下</button>
+  </div>
+</div>
+
+<!-- ============ 展开卡片（全屏预览） ============ -->
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="全息闪卡预览">
+  <div class="viewer-bar">
+    <span class="vt" id="viewer-title">全息闪卡</span>
+    <div class="viewer-ops">
+      <button class="tool-link" id="viewer-mode" type="button">换个加载方式</button>
+      <button class="tool-link" id="viewer-close" type="button">收起</button>
+    </div>
+  </div>
+  <div class="viewer-box">
+    <iframe id="viewer-frame" title="全息闪卡预览" sandbox="allow-scripts" aria-label="全息闪卡预览区域"></iframe>
+    <div class="stage-loading" id="viewer-loading">
+      <div class="spin" aria-hidden="true"></div>
+      <span class="hint">正在展开卡片</span>
+    </div>
+  </div>
+</div>
+
+<!-- 云服务 SDK：本地同源加载，失败时由 sdk-fallback 异步兜底；defer 按序执行不阻塞解析 -->
+<script defer src="js/vendor/workbuddy-cloud-sdk.global.js?v=20261104a"></script>
+<script defer src="js/native-http.js?v=20261117i"></script>
+<script defer src="js/sdk-fallback.js?v=20261104a"></script>
+<script defer src="js/cloud.js?v=20261118b"></script>
+<script defer src="js/offline.js?v=20261118b"></script>
+<script defer src="js/mobile.js?v=20261117i"></script>
+<script defer src="js/auth.js?v=20261117i"></script>
+<script defer src="js/play.js?v=20261118b"></script>
+<script defer src="js/sw-register.js?v=20261116d"></script>
+</body>
+</html>
