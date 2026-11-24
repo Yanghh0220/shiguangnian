@@ -38,7 +38,7 @@ jobs:
             -target App \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            SYMROOT="$PWD/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
@@ -46,7 +46,7 @@ jobs:
       - name: Package unsigned IPA
         run: |
           mkdir Payload
-          cp -R "build/Build/Products/Release-iphoneos/App.app" Payload/
+          cp -R "build/Release-iphoneos/App.app" Payload/
           zip -qry ShiGuangNian-iOS-unsigned.ipa Payload
           ls -lh ShiGuangNian-iOS-unsigned.ipa
 
